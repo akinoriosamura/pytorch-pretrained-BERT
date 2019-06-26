@@ -229,7 +229,7 @@ class BasicTokenizer(object):
         self.do_lower_case = do_lower_case
         self.never_split = never_split
 
-    def tokenize(self, text):
+    def tokenize(self, text, is_japanese=True):
         """Tokenizes a piece of text."""
         text = self._clean_text(text)
         # This was added on November 1st, 2018 for the multilingual and Chinese
@@ -238,7 +238,8 @@ class BasicTokenizer(object):
         # and generally don't have any Chinese data in them (there are Chinese
         # characters in the vocabulary because Wikipedia does have some Chinese
         # words in the English Wikipedia.).
-        # text = self._tokenize_chinese_chars(text)
+        if not is_japanese:
+            text = self._tokenize_chinese_chars(text)
         orig_tokens = whitespace_tokenize(text)
         split_tokens = []
         for token in orig_tokens:
