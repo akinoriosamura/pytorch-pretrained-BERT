@@ -95,7 +95,7 @@ def main():
                         action='store_true',
                         help="Whether to run eval on the test set.")
     parser.add_argument("--do_lower_case",
-                        action='store_false',
+                        action='store_true',
                         help="Set false flag if you are using for japanese.")
     parser.add_argument("--train_batch_size",
                         default=32,
@@ -189,8 +189,8 @@ def main():
     if n_gpu > 0:
         torch.cuda.manual_seed_all(args.seed)
 
-    if not args.do_train and not args.do_eval:
-        raise ValueError("At least one of `do_train` or `do_eval` must be True.")
+    if not args.do_train and not args.do_eval and not args.do_predict:
+        raise ValueError("At least one of `do_train` or `do_eval` or `do_predict`must be True.")
 
     if os.path.exists(args.output_dir) and os.listdir(args.output_dir) and args.do_train and not args.overwrite_output_dir:
         raise ValueError("Output directory ({}) already exists and is not empty.".format(args.output_dir))
@@ -353,6 +353,7 @@ def main():
 
     ### Saving best-practices: if you use defaults names for the model, you can reload it using from_pretrained()
     ### Example:
+    import pdb; pdb.set_trace()
     if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
         # Save a trained model, configuration and tokenizer
         model_to_save = model.module if hasattr(model, 'module') else model  # Only save the model it-self
@@ -456,7 +457,7 @@ def main():
             preds = np.argmax(preds, axis=1)
         elif output_mode == "regression":
             preds = np.squeeze(preds)
-        result = compute_metrics(task_name, preds, out_label_ids)
+        result = compute_metrics(task_name, preds, out_label_ids, label_list)
         print(result["report"])
 
         loss = tr_loss/global_step if args.do_train else None
@@ -551,14 +552,10 @@ def main():
             preds = np.argmax(preds, axis=1)
         elif output_mode == "regression":
             preds = np.squeeze(preds)
-        result = compute_metrics(task_name, preds, out_label_ids)
+        result = compute_metrics(task_name, preds, out_label_ids, label_list)
         print(result["report"])
 
         loss = tr_loss/global_step if args.do_train else None
-
-        result['test_loss'] = test_loss
-        result['global_step'] = global_step
-        result['loss'] = loss
 
         output_test_file = os.path.join(args.output_dir, "test_results.txt")
         with open(output_test_file, "w") as writer:
