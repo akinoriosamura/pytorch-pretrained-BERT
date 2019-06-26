@@ -105,7 +105,7 @@ def main():
                         default=8,
                         type=int,
                         help="Total batch size for eval.")
-        parser.add_argument("--test_batch_size",
+    parser.add_argument("--test_batch_size",
                         default=8,
                         type=int,
                         help="Total batch size for test.")
