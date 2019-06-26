@@ -92,8 +92,8 @@ def main():
                         action='store_true',
                         help="Whether to run eval on the dev set.")
     parser.add_argument("--do_lower_case",
-                        action='store_true',
-                        help="Set this flag if you are using an uncased model.")
+                        action='store_false',
+                        help="Set false flag if you are using for japanese.")
     parser.add_argument("--train_batch_size",
                         default=32,
                         type=int,

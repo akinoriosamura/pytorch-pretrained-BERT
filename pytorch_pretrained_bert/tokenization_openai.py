@@ -144,7 +144,7 @@ class OpenAIGPTTokenizer(object):
             self.fix_text = ftfy.fix_text
         except ImportError:
             logger.warning("ftfy or spacy is not installed using BERT BasicTokenizer instead of SpaCy & ftfy.")
-            self.nlp = BasicTokenizer(do_lower_case=True,
+            self.nlp = BasicTokenizer(do_lower_case=False,
                                       never_split=special_tokens if special_tokens is not None else [])
             self.fix_text = None
 

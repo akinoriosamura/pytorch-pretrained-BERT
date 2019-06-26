@@ -271,7 +271,7 @@ def main():
     parser.add_argument("--bert_model", type=str, required=True,
                         choices=["bert-base-uncased", "bert-large-uncased", "bert-base-cased",
                                  "bert-base-multilingual-uncased", "bert-base-chinese", "bert-base-multilingual-cased"])
-    parser.add_argument("--do_lower_case", action="store_true")
+    parser.add_argument("--do_lower_case", action="store_false")
     parser.add_argument("--do_whole_word_mask", action="store_true",
                         help="Whether to use whole word masking rather than per-WordPiece masking.")
     parser.add_argument("--reduce_memory", action="store_true",
