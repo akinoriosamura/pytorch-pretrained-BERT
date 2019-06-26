@@ -91,6 +91,9 @@ def main():
     parser.add_argument("--do_eval",
                         action='store_true',
                         help="Whether to run eval on the dev set.")
+    parser.add_argument("--do_predict",
+                        action='store_true',
+                        help="Whether to run eval on the test set.")
     parser.add_argument("--do_lower_case",
                         action='store_false',
                         help="Set false flag if you are using for japanese.")
@@ -102,6 +105,10 @@ def main():
                         default=8,
                         type=int,
                         help="Total batch size for eval.")
+        parser.add_argument("--test_batch_size",
+                        default=8,
+                        type=int,
+                        help="Total batch size for test.")
     parser.add_argument("--learning_rate",
                         default=5e-5,
                         type=float,
@@ -486,7 +493,7 @@ def main():
 
         logger.info("***** Running test *****")
         logger.info("  Num examples = %d", len(test_examples))
-        logger.info("  Batch size = %d", args.eval_batch_size)
+        logger.info("  Batch size = %d", args.test_batch_size)
         all_input_ids = torch.tensor([f.input_ids for f in test_features], dtype=torch.long)
         all_input_mask = torch.tensor([f.input_mask for f in test_features], dtype=torch.long)
         all_segment_ids = torch.tensor([f.segment_ids for f in test_features], dtype=torch.long)
@@ -502,7 +509,7 @@ def main():
             test_sampler = SequentialSampler(test_data)
         else:
             test_sampler = DistributedSampler(test_data)  # Note that this sampler samples randomly
-        test_dataloader = DataLoader(test_data, sampler=test_sampler, batch_size=args.eval_batch_size)
+        test_dataloader = DataLoader(test_data, sampler=test_sampler, batch_size=args.test_batch_size)
 
         model.eval()
         test_loss = 0
