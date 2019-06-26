@@ -450,6 +450,7 @@ def main():
         elif output_mode == "regression":
             preds = np.squeeze(preds)
         result = compute_metrics(task_name, preds, out_label_ids)
+        print(result["report"])
 
         loss = tr_loss/global_step if args.do_train else None
 
@@ -464,78 +465,101 @@ def main():
                 logger.info("  %s = %s", key, str(result[key]))
                 writer.write("%s = %s\n" % (key, str(result[key])))
 
-        # hack for MNLI-MM
-        if task_name == "mnli":
-            task_name = "mnli-mm"
-            processor = processors[task_name]()
+    ### Test
+    if args.do_predict and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
+        test_examples = processor.get_test_examples(args.data_dir)
+        cached_test_features_file = os.path.join(args.data_dir, 'test_{0}_{1}_{2}'.format(
+            list(filter(None, args.bert_model.split('/'))).pop(),
+                        str(args.max_seq_length),
+                        str(task_name)))
+        try:
+            with open(cached_test_features_file, "rb") as reader:
+                test_features = pickle.load(reader)
+        except:
+            test_features = convert_examples_to_features(
+                test_examples, label_list, args.max_seq_length, tokenizer, output_mode)
+            if args.local_rank == -1 or torch.distributed.get_rank() == 0:
+                logger.info("  Saving test features into cached file %s", cached_test_features_file)
+                with open(cached_test_features_file, "wb") as writer:
+                    pickle.dump(test_features, writer)
 
-            if os.path.exists(args.output_dir + '-MM') and os.listdir(args.output_dir + '-MM') and args.do_train:
-                raise ValueError("Output directory ({}) already exists and is not empty.".format(args.output_dir))
-            if not os.path.exists(args.output_dir + '-MM'):
-                os.makedirs(args.output_dir + '-MM')
 
-            eval_examples = processor.get_dev_examples(args.data_dir)
-            eval_features = convert_examples_to_features(
-                eval_examples, label_list, args.max_seq_length, tokenizer, output_mode)
-            logger.info("***** Running evaluation *****")
-            logger.info("  Num examples = %d", len(eval_examples))
-            logger.info("  Batch size = %d", args.eval_batch_size)
-            all_input_ids = torch.tensor([f.input_ids for f in eval_features], dtype=torch.long)
-            all_input_mask = torch.tensor([f.input_mask for f in eval_features], dtype=torch.long)
-            all_segment_ids = torch.tensor([f.segment_ids for f in eval_features], dtype=torch.long)
-            all_label_ids = torch.tensor([f.label_id for f in eval_features], dtype=torch.long)
+        logger.info("***** Running test *****")
+        logger.info("  Num examples = %d", len(test_examples))
+        logger.info("  Batch size = %d", args.eval_batch_size)
+        all_input_ids = torch.tensor([f.input_ids for f in test_features], dtype=torch.long)
+        all_input_mask = torch.tensor([f.input_mask for f in test_features], dtype=torch.long)
+        all_segment_ids = torch.tensor([f.segment_ids for f in test_features], dtype=torch.long)
 
-            eval_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
-            # Run prediction for full data
-            eval_sampler = SequentialSampler(eval_data)
-            eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args.eval_batch_size)
+        if output_mode == "classification":
+            all_label_ids = torch.tensor([f.label_id for f in test_features], dtype=torch.long)
+        elif output_mode == "regression":
+            all_label_ids = torch.tensor([f.label_id for f in test_features], dtype=torch.float)
 
-            model.eval()
-            eval_loss = 0
-            nb_eval_steps = 0
-            preds = []
-            out_label_ids = None
+        test_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
+        # Run test for full data
+        if args.local_rank == -1:
+            test_sampler = SequentialSampler(test_data)
+        else:
+            test_sampler = DistributedSampler(test_data)  # Note that this sampler samples randomly
+        test_dataloader = DataLoader(test_data, sampler=test_sampler, batch_size=args.eval_batch_size)
 
-            for input_ids, input_mask, segment_ids, label_ids in tqdm(eval_dataloader, desc="Evaluating"):
-                input_ids = input_ids.to(device)
-                input_mask = input_mask.to(device)
-                segment_ids = segment_ids.to(device)
-                label_ids = label_ids.to(device)
+        model.eval()
+        test_loss = 0
+        nb_test_steps = 0
+        preds = []
+        out_label_ids = None
 
-                with torch.no_grad():
-                    logits = model(input_ids, token_type_ids=segment_ids, attention_mask=input_mask, labels=None)
+        for input_ids, input_mask, segment_ids, label_ids in tqdm(test_dataloader, desc="Test"):
+            input_ids = input_ids.to(device)
+            input_mask = input_mask.to(device)
+            segment_ids = segment_ids.to(device)
+            label_ids = label_ids.to(device)
 
+            with torch.no_grad():
+                logits = model(input_ids, token_type_ids=segment_ids, attention_mask=input_mask)
+
+            # create test loss and other metric required by the task
+            if output_mode == "classification":
                 loss_fct = CrossEntropyLoss()
-                tmp_eval_loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
+                tmp_test_loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
+            elif output_mode == "regression":
+                loss_fct = MSELoss()
+                tmp_test_loss = loss_fct(logits.view(-1), label_ids.view(-1))
 
-                eval_loss += tmp_eval_loss.mean().item()
-                nb_eval_steps += 1
-                if len(preds) == 0:
-                    preds.append(logits.detach().cpu().numpy())
-                    out_label_ids = label_ids.detach().cpu().numpy()
-                else:
-                    preds[0] = np.append(
-                        preds[0], logits.detach().cpu().numpy(), axis=0)
-                    out_label_ids = np.append(
-                        out_label_ids, label_ids.detach().cpu().numpy(), axis=0)
+            test_loss += tmp_test_loss.mean().item()
+            nb_test_steps += 1
+            if len(preds) == 0:
+                preds.append(logits.detach().cpu().numpy())
+                out_label_ids = label_ids.detach().cpu().numpy()
+            else:
+                preds[0] = np.append(
+                    preds[0], logits.detach().cpu().numpy(), axis=0)
+                out_label_ids = np.append(
+                    out_label_ids, label_ids.detach().cpu().numpy(), axis=0)
 
-            eval_loss = eval_loss / nb_eval_steps
-            preds = preds[0]
+        test_loss = test_loss / nb_test_steps
+        preds = preds[0]
+        if output_mode == "classification":
             preds = np.argmax(preds, axis=1)
-            result = compute_metrics(task_name, preds, out_label_ids)
+        elif output_mode == "regression":
+            preds = np.squeeze(preds)
+        result = compute_metrics(task_name, preds, out_label_ids)
+        print(result["report"])
 
-            loss = tr_loss/global_step if args.do_train else None
+        loss = tr_loss/global_step if args.do_train else None
 
-            result['eval_loss'] = eval_loss
-            result['global_step'] = global_step
-            result['loss'] = loss
+        result['test_loss'] = test_loss
+        result['global_step'] = global_step
+        result['loss'] = loss
 
-            output_eval_file = os.path.join(args.output_dir + '-MM', "eval_results.txt")
-            with open(output_eval_file, "w") as writer:
-                logger.info("***** Eval results *****")
-                for key in sorted(result.keys()):
-                    logger.info("  %s = %s", key, str(result[key]))
-                    writer.write("%s = %s\n" % (key, str(result[key])))
+        output_test_file = os.path.join(args.output_dir, "test_results.txt")
+        with open(output_test_file, "w") as writer:
+            logger.info("***** test results *****")
+            for key in sorted(result.keys()):
+                logger.info("  %s = %s", key, str(result[key]))
+                writer.write("%s = %s\n" % (key, str(result[key])))
+
 
 if __name__ == "__main__":
     main()
