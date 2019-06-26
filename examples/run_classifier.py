@@ -92,7 +92,7 @@ def main():
                         action='store_true',
                         help="Whether to run eval on the dev set.")
     parser.add_argument("--do_lower_case",
-                        action='store_false',
+                        action='store_true',
                         help="Set false flag if you are using for japanese.")
     parser.add_argument("--train_batch_size",
                         default=32,
