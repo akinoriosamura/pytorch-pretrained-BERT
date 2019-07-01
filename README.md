@@ -1563,6 +1563,33 @@ python -m torch.distributed.launch --nproc_per_node=8 \
   --gradient_accumulation_steps 2
 ```
 
+## BERT classifier example flow on Japanese
+### requiments
+ - clone this repository
+ - git checkout to `japanese-classification` branch
+ - download [pretrained model](http://nlp.ist.i.kyoto-u.ac.jp/index.php?BERT%E6%97%A5%E6%9C%AC%E8%AA%9EPretrained%E3%83%A2%E3%83%87%E3%83%AB)
+ - set the model in `model/`
+ - get livedoor dataset
+ - set the dataset in `data/`
+ - setup by this
+```
+python setup.py install
+cd examples
+export BERT_BASE_DIR=../model/Japanese_L-12_H-768_A-12_E-30_BPE
+```
+
+### train
+should not set `--do_lower_case` option
+```
+python run_classifier.py --task_name=ldcc --do_train --do_eval --data_dir=../data/ldcc --max_seq_length=512 --train_batch_size=4 --learning_rate=2e-5 --num_train_epochs=3.0 --output_dir=../result/output --bert_model=$BERT_BASE_DIR
+```
+
+### predict test
+should not set `--do_lower_case` option
+```
+python run_classifier.py --task_name=ldcc --do_predict --data_dir=../data/ldcc --max_seq_length=512 --train_batch_size=4 --learning_rate=2e-5 --num_train_epochs=3.0 --output_dir=../result/output --bert_model=$BERT_BASE_DIR
+```
+
 ## BERTology
 
 There is a growing field of study concerned with investigating the inner working of large-scale transformers like BERT (that some call "BERTology"). Some good examples of this field are:
