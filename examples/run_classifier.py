@@ -320,6 +320,7 @@ def main():
                 if output_mode == "classification":
                     loss_fct = CrossEntropyLoss()
                     loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
+
                 elif output_mode == "regression":
                     loss_fct = MSELoss()
                     loss = loss_fct(logits.view(-1), label_ids.view(-1))
@@ -365,13 +366,13 @@ def main():
         model_to_save.config.to_json_file(output_config_file)
         tokenizer.save_vocabulary(args.output_dir)
 
-        # Load a trained model and vocabulary that you have fine-tuned
-        model = BertForSequenceClassification.from_pretrained(args.output_dir, num_labels=num_labels)
-        tokenizer = BertTokenizer.from_pretrained(args.output_dir, do_lower_case=args.do_lower_case)
-
         # Good practice: save your training arguments together with the trained model
         output_args_file = os.path.join(args.output_dir, 'training_args.bin')
         torch.save(args, output_args_file)
+    elif (args.do_eval or args.do_predict) and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
+        # Load a trained model and vocabulary that you have fine-tuned
+        model = BertForSequenceClassification.from_pretrained(args.output_dir, num_labels=num_labels)
+        tokenizer = BertTokenizer.from_pretrained(args.bert_model, do_lower_case=args.do_lower_case)
     else:
         model = BertForSequenceClassification.from_pretrained(args.bert_model, num_labels=num_labels)
 
@@ -450,6 +451,19 @@ def main():
                 out_label_ids = np.append(
                     out_label_ids, label_ids.detach().cpu().numpy(), axis=0)
 
+        # save each probs
+        def softmax(x):
+            return (np.exp(x) / np.sum(np.exp(x)))
+        probs = np.array([softmax(pred) for pred in preds[0]])
+        output_predict_file = os.path.join(
+            args.output_dir, "val_each_probs.tsv")
+        with open(output_predict_file, "w") as writer:
+            for probabilities in probs:
+                output_line = "\t".join(
+                    str(class_probability)
+                    for class_probability in probabilities) + "\n"
+                writer.write(output_line)
+
         eval_loss = eval_loss / nb_eval_steps
         preds = preds[0]
         if output_mode == "classification":
@@ -457,13 +471,12 @@ def main():
         elif output_mode == "regression":
             preds = np.squeeze(preds)
         result = compute_metrics(task_name, preds, out_label_ids, label_list)
-        print(result["report"])
 
-        loss = tr_loss/global_step if args.do_train else None
+        train_loss = tr_loss/global_step if args.do_train else None
 
         result['eval_loss'] = eval_loss
         result['global_step'] = global_step
-        result['loss'] = loss
+        result['train_loss'] = train_loss
 
         output_eval_file = os.path.join(args.output_dir, "eval_results.txt")
         with open(output_eval_file, "w") as writer:
@@ -545,6 +558,19 @@ def main():
                 out_label_ids = np.append(
                     out_label_ids, label_ids.detach().cpu().numpy(), axis=0)
 
+        # save each probs
+        def softmax(x):
+            return (np.exp(x) / np.sum(np.exp(x)))
+        probs = np.array([softmax(pred) for pred in preds[0]])
+        output_predict_file = os.path.join(
+            args.output_dir, "test_each_probs.tsv")
+        with open(output_predict_file, "w") as writer:
+            for probabilities in probs:
+                output_line = "\t".join(
+                    str(class_probability)
+                    for class_probability in probabilities) + "\n"
+                writer.write(output_line)
+
         test_loss = test_loss / nb_test_steps
         preds = preds[0]
         if output_mode == "classification":
@@ -553,8 +579,8 @@ def main():
             preds = np.squeeze(preds)
         result = compute_metrics(task_name, preds, out_label_ids, label_list)
 
-        loss = tr_loss/global_step if args.do_train else None
-
+        result['test_loss'] = test_loss
+        result['global_step'] = global_step
         output_test_file = os.path.join(args.output_dir, "test_results.txt")
         with open(output_test_file, "w") as writer:
             logger.info("***** test results *****")
