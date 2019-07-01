@@ -236,7 +236,7 @@ def main():
 
         # Prepare data loader
         train_examples = processor.get_train_examples(args.data_dir)
-        cached_train_features_file = os.path.join(args.data_dir, 'train_{0}_{1}_{2}'.format(
+        cached_train_features_file = os.path.join(args.output_dir, 'train_{0}_{1}_{2}'.format(
             list(filter(None, args.bert_model.split('/'))).pop(),
                         str(args.max_seq_length),
                         str(task_name)))
@@ -353,7 +353,6 @@ def main():
 
     ### Saving best-practices: if you use defaults names for the model, you can reload it using from_pretrained()
     ### Example:
-    import pdb; pdb.set_trace()
     if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
         # Save a trained model, configuration and tokenizer
         model_to_save = model.module if hasattr(model, 'module') else model  # Only save the model it-self
@@ -381,7 +380,7 @@ def main():
     ### Evaluation
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
         eval_examples = processor.get_dev_examples(args.data_dir)
-        cached_eval_features_file = os.path.join(args.data_dir, 'dev_{0}_{1}_{2}'.format(
+        cached_eval_features_file = os.path.join(args.output_dir, 'dev_{0}_{1}_{2}'.format(
             list(filter(None, args.bert_model.split('/'))).pop(),
                         str(args.max_seq_length),
                         str(task_name)))
@@ -476,7 +475,7 @@ def main():
     ### Test
     if args.do_predict and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
         test_examples = processor.get_test_examples(args.data_dir)
-        cached_test_features_file = os.path.join(args.data_dir, 'test_{0}_{1}_{2}'.format(
+        cached_test_features_file = os.path.join(args.output_dir, 'test_{0}_{1}_{2}'.format(
             list(filter(None, args.bert_model.split('/'))).pop(),
                         str(args.max_seq_length),
                         str(task_name)))
@@ -553,7 +552,6 @@ def main():
         elif output_mode == "regression":
             preds = np.squeeze(preds)
         result = compute_metrics(task_name, preds, out_label_ids, label_list)
-        print(result["report"])
 
         loss = tr_loss/global_step if args.do_train else None
 
@@ -561,8 +559,12 @@ def main():
         with open(output_test_file, "w") as writer:
             logger.info("***** test results *****")
             for key in sorted(result.keys()):
-                logger.info("  %s = %s", key, str(result[key]))
-                writer.write("%s = %s\n" % (key, str(result[key])))
+                if key == "report":
+                    logger.info("  %s = \n%s", key, str(result[key]))
+                    writer.write("%s = \n%s\n" % (key, str(result[key])))
+                else:
+                    logger.info("  %s = %s", key, str(result[key]))
+                    writer.write("%s = %s\n" % (key, str(result[key])))
 
 
 if __name__ == "__main__":
